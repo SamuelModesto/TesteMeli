@@ -1,0 +1,136 @@
+groups:
+  - name: ml-product-api-alerts
+    rules:
+      # --- CRÍTICOS
+      - alert: AplicacaoForaDoAr
+        expr: sum(up{job="ml-product-api"}) == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Aplicação ml-product-api está fora do ar (todas as instâncias down)"
+          description: "O serviço ml-product-api está indisponível há mais de 1 minuto."
+
+      - alert: Erro5xxElevado
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{job="ml-product-api",status=~"5.."}[5m]))
+            /
+            sum(rate(http_server_requests_seconds_count{job="ml-product-api"}[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Taxa de erro 5xx superior a 5% em 5 minutos"
+          description: "Indica uma falha crítica na lógica ou dependência (ex: Banco de Dados)."
+
+      - alert: SaturacaoRecursosCritica
+        expr: |
+          (
+            sum(jvm_memory_used_bytes{job="ml-product-api",area="heap"})
+            /
+            sum(jvm_memory_max_bytes{job="ml-product-api",area="heap"})
+          ) > 0.90
+          OR
+          (
+            max(hikaricp_connections_active{job="ml-product-api"})
+            /
+            max(hikaricp_connections_max{job="ml-product-api"})
+          ) == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Saturação crítica de recursos (Heap > 90% ou Hikari CP 100%)"
+          description: "Risco iminente de Out Of Memory ou Connection Timeout."
+
+      # --- WARNING
+      - alert: LatenciaP95Alta
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(http_server_requests_seconds_bucket{job="ml-product-api"}[5m])) by (le)
+          ) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latência p95 acima de 800ms por 5 minutos"
+          description: "O P95 ultrapassou 800ms, indicando degradação de performance."
+
+      - alert: AumentoErros4xx
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{job="ml-product-api",status=~"400|404"}[1m]))
+            /
+            sum(rate(http_server_requests_seconds_count{job="ml-product-api"}[1m]))
+          ) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pico repentino de erros 400 ou 404"
+          description: "Pode indicar um bug no cliente ou uma alteração de contrato não comunicada."
+
+      - alert: TaxaNotFoundElevada
+        expr: |
+          sum(rate(product_search_total{job="ml-product-api",status="not_found"}[5m]))
+          /
+          sum(rate(product_search_total{job="ml-product-api"}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Taxa de NOT_FOUND elevada (Business Alert)"
+          description: "Pode indicar problema no catálogo de produtos ou buscas falhando silenciosamente."
+
+      # --- OUTROS ALERTAS DE MONITORAMENTO ---
+      - alert: InstanciaForaDoAr
+        expr: up{job="ml-product-api"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Uma instância da ml-product-api está fora do ar"
+
+      - alert: CPUAlta
+        expr: avg(process_cpu_usage{job="ml-product-api"}) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU do processo acima de 80% por 10 minutos"
+
+      - alert: GCPauseAlta
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum(rate(jvm_gc_pause_seconds_bucket{job="ml-product-api"}[5m])) by (le)
+          ) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GC pause p99 acima de 200ms por 10 minutos"
+
+      - alert: CacheHitRatioBaixo
+        expr: |
+          sum(rate(cache_gets_total{job="ml-product-api", result="hit"}[5m]))
+          /
+          sum(rate(cache_gets_total{job="ml-product-api"}[5m])) < 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Taxa de acerto (Hit Ratio) do cache abaixo de 50%"
+          description: "O cache 'products' está com baixa eficiência, o que pode sobrecarregar o banco de dados."
+
+      - alert: CacheEvictionElevada
+        expr: sum(rate(cache_evictions_total{job="ml-product-api"}[5m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Taxa de evicção de cache elevada"
+          description: "Muitos itens estão sendo removidos do cache 'products', sugerindo que o 'maximumSize' pode estar pequeno."
