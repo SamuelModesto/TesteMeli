@@ -1,0 +1,24 @@
+rule_files:
+  - /work/src/main/resources/observability/prometheus/alert-rules.yml
+
+tests:
+  - interval: 1m
+
+    input_series:
+      # total requests (crescimento constante)
+      - series: 'http_server_requests_seconds_count{job="ml-product-api"}'
+        values: '0 100 200 300 400 500 600 700 800 900'
+
+      # erros 5xx (~30%)
+      - series: 'http_server_requests_seconds_count{job="ml-product-api",status="500"}'
+        values: '0 30 60 90 120 150 180 210 240 270'
+
+    alert_rule_test:
+      - alertname: Erro5xxElevado
+        eval_time: 9m
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Taxa de erro 5xx superior a 5% em 5 minutos"
+              description: "Indica uma falha crítica na lógica ou dependência (ex: Banco de Dados)."

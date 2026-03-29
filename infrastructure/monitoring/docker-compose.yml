@@ -1,0 +1,9 @@
+services:
+  promtool:
+    image: prom/prometheus
+    volumes:
+      - ${PWD}:/work
+    working_dir: /work
+    entrypoint: >
+      promtool test rules
+      /work/infrastructure/monitoring/prometheus/alert-tests.yml
