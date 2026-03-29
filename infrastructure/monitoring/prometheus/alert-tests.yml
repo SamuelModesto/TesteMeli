@@ -2,17 +2,49 @@ rule_files:
   - /work/src/main/resources/observability/prometheus/alert-rules.yml
 
 tests:
-  - interval: 1m
 
+  # ================================================================
+  # CRÍTICO: AplicacaoForaDoAr
+  # Dispara quando sum(up) == 0 por 1m
+  # ================================================================
+  - name: "AplicacaoForaDoAr - dispara quando todas as instâncias estão down por 1 minuto"
+    interval: 1m
     input_series:
-      # total requests (crescimento constante)
+      - series: 'up{job="ml-product-api"}'
+        values: '0 0 0'
+    alert_rule_test:
+      - alertname: AplicacaoForaDoAr
+        eval_time: 1m
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Aplicação ml-product-api está fora do ar (todas as instâncias down)"
+              description: "O serviço ml-product-api está indisponível há mais de 1 minuto."
+
+  - name: "AplicacaoForaDoAr - não dispara quando instância está up"
+    interval: 1m
+    input_series:
+      - series: 'up{job="ml-product-api"}'
+        values: '1 1 1'
+    alert_rule_test:
+      - alertname: AplicacaoForaDoAr
+        eval_time: 2m
+        exp_alerts: []
+
+  # ================================================================
+  # CRÍTICO: Erro5xxElevado
+  # Dispara quando taxa de 5xx > 5% por 5m
+  # ================================================================
+  - name: "Erro5xxElevado - dispara com taxa de 5xx acima de 5% por 5 minutos"
+    interval: 1m
+    input_series:
+      # total de requests (100 req/min)
       - series: 'http_server_requests_seconds_count{job="ml-product-api"}'
         values: '0 100 200 300 400 500 600 700 800 900'
-
-      # erros 5xx (~30%)
+      # ~30% de erros 5xx
       - series: 'http_server_requests_seconds_count{job="ml-product-api",status="500"}'
         values: '0 30 60 90 120 150 180 210 240 270'
-
     alert_rule_test:
       - alertname: Erro5xxElevado
         eval_time: 9m
@@ -22,3 +54,317 @@ tests:
             exp_annotations:
               summary: "Taxa de erro 5xx superior a 5% em 5 minutos"
               description: "Indica uma falha crítica na lógica ou dependência (ex: Banco de Dados)."
+
+  - name: "Erro5xxElevado - não dispara com taxa de 5xx abaixo de 5%"
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{job="ml-product-api"}'
+        values: '0 100 200 300 400 500 600 700 800 900'
+      # apenas 2% de erros 5xx
+      - series: 'http_server_requests_seconds_count{job="ml-product-api",status="500"}'
+        values: '0 2 4 6 8 10 12 14 16 18'
+    alert_rule_test:
+      - alertname: Erro5xxElevado
+        eval_time: 9m
+        exp_alerts: []
+
+  # ================================================================
+  # CRÍTICO: SaturacaoRecursosCritica
+  # Dispara quando heap JVM > 90% OU Hikari CP 100% por 5m
+  # ================================================================
+  - name: "SaturacaoRecursosCritica - dispara quando heap JVM ultrapassa 90%"
+    interval: 1m
+    input_series:
+      # Heap a 95% (950MB / 1000MB)
+      - series: 'jvm_memory_used_bytes{job="ml-product-api",area="heap"}'
+        values: '950000000+0x5'
+      - series: 'jvm_memory_max_bytes{job="ml-product-api",area="heap"}'
+        values: '1000000000+0x5'
+      # Hikari saudável (3/10 conexões)
+      - series: 'hikaricp_connections_active{job="ml-product-api"}'
+        values: '3+0x5'
+      - series: 'hikaricp_connections_max{job="ml-product-api"}'
+        values: '10+0x5'
+    alert_rule_test:
+      - alertname: SaturacaoRecursosCritica
+        eval_time: 5m
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Saturação crítica de recursos (Heap > 90% ou Hikari CP 100%)"
+              description: "Risco iminente de Out Of Memory ou Connection Timeout."
+
+  - name: "SaturacaoRecursosCritica - dispara quando Hikari CP está 100% utilizado"
+    interval: 1m
+    input_series:
+      # Heap saudável (70%)
+      - series: 'jvm_memory_used_bytes{job="ml-product-api",area="heap"}'
+        values: '700000000+0x5'
+      - series: 'jvm_memory_max_bytes{job="ml-product-api",area="heap"}'
+        values: '1000000000+0x5'
+      # Hikari 100% utilizado (10/10 conexões)
+      - series: 'hikaricp_connections_active{job="ml-product-api"}'
+        values: '10+0x5'
+      - series: 'hikaricp_connections_max{job="ml-product-api"}'
+        values: '10+0x5'
+    alert_rule_test:
+      - alertname: SaturacaoRecursosCritica
+        eval_time: 5m
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Saturação crítica de recursos (Heap > 90% ou Hikari CP 100%)"
+              description: "Risco iminente de Out Of Memory ou Connection Timeout."
+
+  # ================================================================
+  # WARNING: LatenciaP95Alta
+  # Dispara quando p95 > 800ms por 5m
+  # Todos os requests caem no bucket le=1.0 (sem nenhum <= 0.8s),
+  # fazendo o p95 cair entre 0.8s e 1.0s — acima do limite.
+  # ================================================================
+  - name: "LatenciaP95Alta - dispara quando p95 de latência ultrapassa 800ms por 5 minutos"
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_bucket{job="ml-product-api",le="0.5"}'
+        values: '0+0x14'
+      - series: 'http_server_requests_seconds_bucket{job="ml-product-api",le="0.8"}'
+        values: '0+0x14'
+      # Todos os requests terminam entre 0.8s e 1.0s → p95 > 0.8
+      - series: 'http_server_requests_seconds_bucket{job="ml-product-api",le="1.0"}'
+        values: '0 10 20 30 40 50 60 70 80 90 100 110 120 130 140'
+      - series: 'http_server_requests_seconds_bucket{job="ml-product-api",le="+Inf"}'
+        values: '0 10 20 30 40 50 60 70 80 90 100 110 120 130 140'
+    alert_rule_test:
+      - alertname: LatenciaP95Alta
+        eval_time: 10m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Latência p95 acima de 800ms por 5 minutos"
+              description: "O P95 ultrapassou 800ms, indicando degradação de performance."
+
+  # ================================================================
+  # WARNING: AumentoErros4xx
+  # Dispara quando erros 400/404 > 10% por 2m
+  # Usa interval: 30s para garantir >= 2 amostras dentro da janela
+  # rate[1m] (com interval=1m haveria apenas 1 amostra → rate indefinido)
+  # ================================================================
+  - name: "AumentoErros4xx - dispara com pico de erros 400 acima de 10% por 2 minutos"
+    interval: 30s
+    input_series:
+      # 84 req/30s = ~168 req/min em requests 200
+      - series: 'http_server_requests_seconds_count{job="ml-product-api",status="200"}'
+        values: '0 42 84 126 168 210 252 294 336 378 420 462 504 546 588'
+      # 16 req/30s = ~32 req/min em erros 400 (~16% do total)
+      - series: 'http_server_requests_seconds_count{job="ml-product-api",status="400"}'
+        values: '0 8 16 24 32 40 48 56 64 72 80 88 96 104 112'
+    alert_rule_test:
+      - alertname: AumentoErros4xx
+        eval_time: 5m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Pico repentino de erros 400 ou 404"
+              description: "Pode indicar um bug no cliente ou uma alteração de contrato não comunicada."
+
+  - name: "AumentoErros4xx - não dispara com taxa de 4xx abaixo de 10%"
+    interval: 30s
+    input_series:
+      # 94 req/30s em requests 200
+      - series: 'http_server_requests_seconds_count{job="ml-product-api",status="200"}'
+        values: '0 47 94 141 188 235 282 329 376 423 470'
+      # 3 req/30s em erros 400 (~6% do total — abaixo do limite)
+      - series: 'http_server_requests_seconds_count{job="ml-product-api",status="400"}'
+        values: '0 3 6 9 12 15 18 21 24 27 30'
+    alert_rule_test:
+      - alertname: AumentoErros4xx
+        eval_time: 5m
+        exp_alerts: []
+
+  # ================================================================
+  # WARNING: TaxaNotFoundElevada
+  # Dispara quando not_found > 10% das buscas por 5m
+  # ================================================================
+  - name: "TaxaNotFoundElevada - dispara quando taxa de NOT_FOUND ultrapassa 10% por 5 minutos"
+    interval: 1m
+    input_series:
+      # 80% dos produtos encontrados
+      - series: 'product_search_total{job="ml-product-api",status="found"}'
+        values: '0 80 160 240 320 400 480 560 640 720'
+      # 20% not_found (acima do limite de 10%)
+      - series: 'product_search_total{job="ml-product-api",status="not_found"}'
+        values: '0 20 40 60 80 100 120 140 160 180'
+    alert_rule_test:
+      - alertname: TaxaNotFoundElevada
+        eval_time: 9m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Taxa de NOT_FOUND elevada (Business Alert)"
+              description: "Pode indicar problema no catálogo de produtos ou buscas falhando silenciosamente."
+
+  - name: "TaxaNotFoundElevada - não dispara com taxa de NOT_FOUND abaixo de 10%"
+    interval: 1m
+    input_series:
+      - series: 'product_search_total{job="ml-product-api",status="found"}'
+        values: '0 95 190 285 380 475 570 665 760 855'
+      # apenas 5% not_found
+      - series: 'product_search_total{job="ml-product-api",status="not_found"}'
+        values: '0 5 10 15 20 25 30 35 40 45'
+    alert_rule_test:
+      - alertname: TaxaNotFoundElevada
+        eval_time: 9m
+        exp_alerts: []
+
+  # ================================================================
+  # WARNING: InstanciaForaDoAr
+  # Dispara quando uma instância específica fica down por 2m
+  # ================================================================
+  - name: "InstanciaForaDoAr - dispara quando uma instância fica down por 2 minutos"
+    interval: 1m
+    input_series:
+      - series: 'up{job="ml-product-api",instance="app:8080"}'
+        values: '0 0 0'
+    alert_rule_test:
+      - alertname: InstanciaForaDoAr
+        eval_time: 2m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: ml-product-api
+              instance: "app:8080"
+            exp_annotations:
+              summary: "Uma instância da ml-product-api está fora do ar"
+
+  # ================================================================
+  # WARNING: CPUAlta
+  # Dispara quando CPU média > 80% por 10m
+  # ================================================================
+  - name: "CPUAlta - dispara quando CPU do processo ultrapassa 80% por 10 minutos"
+    interval: 1m
+    input_series:
+      # CPU estável a 85%
+      - series: 'process_cpu_usage{job="ml-product-api"}'
+        values: '0.85+0x10'
+    alert_rule_test:
+      - alertname: CPUAlta
+        eval_time: 10m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "CPU do processo acima de 80% por 10 minutos"
+
+  - name: "CPUAlta - não dispara quando CPU está abaixo de 80%"
+    interval: 1m
+    input_series:
+      - series: 'process_cpu_usage{job="ml-product-api"}'
+        values: '0.5+0x10'
+    alert_rule_test:
+      - alertname: CPUAlta
+        eval_time: 10m
+        exp_alerts: []
+
+  # ================================================================
+  # WARNING: GCPauseAlta
+  # Dispara quando GC pause p99 > 200ms por 10m
+  # Todos os eventos de GC caem no bucket le=0.5 (entre 200ms e 500ms),
+  # fazendo o p99 cair entre 0.2s e 0.5s — acima do limite.
+  # ================================================================
+  - name: "GCPauseAlta - dispara quando GC pause p99 ultrapassa 200ms por 10 minutos"
+    interval: 1m
+    input_series:
+      - series: 'jvm_gc_pause_seconds_bucket{job="ml-product-api",le="0.1"}'
+        values: '0+0x19'
+      - series: 'jvm_gc_pause_seconds_bucket{job="ml-product-api",le="0.2"}'
+        values: '0+0x19'
+      # Todas as pausas de GC entre 200ms e 500ms → p99 > 0.2
+      - series: 'jvm_gc_pause_seconds_bucket{job="ml-product-api",le="0.5"}'
+        values: '0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 105 110 115 120 125'
+      - series: 'jvm_gc_pause_seconds_bucket{job="ml-product-api",le="+Inf"}'
+        values: '0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 105 110 115 120 125'
+    alert_rule_test:
+      - alertname: GCPauseAlta
+        eval_time: 15m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "GC pause p99 acima de 200ms por 10 minutos"
+
+  # ================================================================
+  # WARNING: CacheHitRatioBaixo
+  # Dispara quando hit ratio < 50% por 10m
+  # ================================================================
+  - name: "CacheHitRatioBaixo - dispara quando hit ratio fica abaixo de 50% por 10 minutos"
+    interval: 1m
+    input_series:
+      # Apenas 20% de acertos
+      - series: 'cache_gets_total{job="ml-product-api",result="hit"}'
+        values: '0 20 40 60 80 100 120 140 160 180 200 220 240 260 280 300'
+      # 80% de misses
+      - series: 'cache_gets_total{job="ml-product-api",result="miss"}'
+        values: '0 80 160 240 320 400 480 560 640 720 800 880 960 1040 1120 1200'
+    alert_rule_test:
+      - alertname: CacheHitRatioBaixo
+        eval_time: 15m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Taxa de acerto (Hit Ratio) do cache abaixo de 50%"
+              description: "O cache 'products' está com baixa eficiência, o que pode sobrecarregar o banco de dados."
+
+  - name: "CacheHitRatioBaixo - não dispara quando hit ratio está acima de 50%"
+    interval: 1m
+    input_series:
+      # 80% de acertos
+      - series: 'cache_gets_total{job="ml-product-api",result="hit"}'
+        values: '0 80 160 240 320 400 480 560 640 720 800 880 960 1040 1120 1200'
+      - series: 'cache_gets_total{job="ml-product-api",result="miss"}'
+        values: '0 20 40 60 80 100 120 140 160 180 200 220 240 260 280 300'
+    alert_rule_test:
+      - alertname: CacheHitRatioBaixo
+        eval_time: 15m
+        exp_alerts: []
+
+  # ================================================================
+  # WARNING: CacheEvictionElevada
+  # Dispara quando taxa de evicção > 10/min por 5m
+  # ================================================================
+  # ================================================================
+  # WARNING: CacheEvictionElevada
+  # Dispara quando rate(evictions[5m]) > 10 por 5m
+  # ATENÇÃO: rate() retorna por segundo → threshold 10 = 10/s = 600/min
+  # ================================================================
+  - name: "CacheEvictionElevada - dispara quando taxa de evicção ultrapassa 10/s por 5 minutos"
+    interval: 1m
+    input_series:
+      # 700 evicções/min → rate = 700/60 ≈ 11.7/s > 10/s
+      - series: 'cache_evictions_total{job="ml-product-api"}'
+        values: '0 700 1400 2100 2800 3500 4200 4900 5600 6300 7000'
+    alert_rule_test:
+      - alertname: CacheEvictionElevada
+        eval_time: 10m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Taxa de evicção de cache elevada"
+              description: "Muitos itens estão sendo removidos do cache 'products', sugerindo que o 'maximumSize' pode estar pequeno."
+
+  - name: "CacheEvictionElevada - não dispara quando taxa de evicção está abaixo de 10/s"
+    interval: 1m
+    input_series:
+      # 300 evicções/min → rate = 300/60 = 5/s < 10/s
+      - series: 'cache_evictions_total{job="ml-product-api"}'
+        values: '0 300 600 900 1200 1500 1800 2100 2400 2700 3000'
+    alert_rule_test:
+      - alertname: CacheEvictionElevada
+        eval_time: 10m
+        exp_alerts: []
