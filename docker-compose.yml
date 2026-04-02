@@ -3,9 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ml-product-api
-    ports:
-      - "8080:8080"
     networks:
       - app-network
 
@@ -46,6 +43,7 @@ services:
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
       - "--web.external-url=http://localhost/alertmanager/"
+      - "--web.route-prefix=/"
     networks:
       - app-network
 

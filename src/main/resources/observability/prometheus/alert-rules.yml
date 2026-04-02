@@ -3,7 +3,7 @@ groups:
     rules:
       # --- CRÍTICOS
       - alert: AplicacaoForaDoAr
-        expr: sum(up{job="ml-product-api"}) == 0
+        expr: absent(up{job="ml-product-api"}) OR sum(up{job="ml-product-api"}) == 0
         for: 1m
         labels:
           severity: critical
@@ -88,7 +88,7 @@ groups:
       # --- OUTROS ALERTAS DE MONITORAMENTO ---
       - alert: InstanciaForaDoAr
         expr: up{job="ml-product-api"} == 0
-        for: 2m
+        for: 0m
         labels:
           severity: warning
         annotations:
