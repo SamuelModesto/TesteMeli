@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
+import net.logstash.logback.argument.StructuredArguments;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,8 +30,18 @@ class ProductController {
     @ApiResponse(responseCode = "404", description = "Produto não encontrado")
     public ResponseEntity<ProductResponseDto> getProductById(@PathVariable String id) throws InterruptedException {
 
-        log.info("Iniciando busca pelo produto com ID: {}", id);
 
-        return ResponseEntity.ok(productService.findProductById(id));
+
+        log.info("Iniciando busca pelo produto",
+                StructuredArguments.kv("product_id", id),
+                StructuredArguments.kv("endpoint", "GET /api/v1/products/{id}"));
+
+        ProductResponseDto product = productService.findProductById(id);
+
+        log.info("Produto encontrado com sucesso",
+                StructuredArguments.kv("product_id", id),
+                StructuredArguments.kv("product_title", product.title()));
+
+        return ResponseEntity.ok(product);
     }
 }
