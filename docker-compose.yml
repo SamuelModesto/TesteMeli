@@ -3,9 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ml-product-api
-    ports:
-      - "8080:8080"
+    deploy:
+      replicas: 3
     networks:
       - app-network
 
@@ -46,6 +45,7 @@ services:
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
       - "--web.external-url=http://localhost/alertmanager/"
+      - "--web.route-prefix=/"
     networks:
       - app-network
 
@@ -62,8 +62,59 @@ services:
     depends_on:
       - prometheus
     volumes:
-      # Provisioning (datasource + dashboards config + dashboard JSONs)
       - ./src/main/resources/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - app-network
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: jaeger
+    ports:
+      - "16686:16686"
+      - "9411:9411"
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+      - QUERY_BASE_PATH=/jaeger
+    networks:
+      - app-network
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: elasticsearch
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    networks:
+      - app-network
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.13.4
+    container_name: logstash
+    ports:
+      - "5000:5000"
+      - "9600:9600"
+    volumes:
+      - ./src/main/resources/observability/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./src/main/resources/observability/logstash/pipeline:/usr/share/logstash/pipeline:ro
+    depends_on:
+      - elasticsearch
+    networks:
+      - app-network
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_BASEPATH=/kibana
+      - SERVER_REWRITEBASEPATH=true
+    depends_on:
+      - elasticsearch
     networks:
       - app-network
 

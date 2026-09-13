@@ -1,0 +1,28 @@
+<configuration>
+
+    <!-- Appender console JSON (útil para docker logs / dev local) -->
+    <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <includeMdc>true</includeMdc>
+            <timeZone>UTC</timeZone>
+        </encoder>
+    </appender>
+
+    <!-- Appender TCP → Logstash (reconecta automaticamente se Logstash estiver indisponível) -->
+    <appender name="LOGSTASH" class="net.logstash.logback.appender.LogstashTcpSocketAppender">
+        <destination>logstash:5000</destination>
+        <reconnectionDelay>10 seconds</reconnectionDelay>
+        <keepAliveDuration>5 minutes</keepAliveDuration>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <includeMdc>true</includeMdc>
+            <timeZone>UTC</timeZone>
+        </encoder>
+    </appender>
+
+    <!-- Logger raiz -->
+    <root level="INFO">
+        <appender-ref ref="JSON_CONSOLE"/>
+        <appender-ref ref="LOGSTASH"/>
+    </root>
+
+</configuration>

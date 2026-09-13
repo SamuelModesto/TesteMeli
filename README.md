@@ -158,6 +158,13 @@ mvn clean package
 
 # Infra + Aplicação (ml-product-app)
 docker-compose -f src/main/resources/observability/docker-compose.yml up -d
+
+# Rodar multiplas instâncias da aplicação (ex: 3)
+docker compose up --scale app=3 -d
+
+#Rebuildar a aplicacao
+docker compose up --build --scale app=3 -d
+
 ```
 
 ## URLs Disponíveis

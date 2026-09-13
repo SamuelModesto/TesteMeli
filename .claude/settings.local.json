@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where mvn:*)",
+      "Read(//c//**)",
+      "Bash(find /c /d 2)",
+      "Bash(/dev/null -name mvn -o -name mvn.cmd)"
+    ]
+  }
+}
