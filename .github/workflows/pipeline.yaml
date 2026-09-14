@@ -24,3 +24,6 @@ jobs:
 
       - name: Rodar testes
         run: mvn test
+
+      - name: Build da aplicação
+        run: mvn package -DskipTests
