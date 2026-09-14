@@ -1,4 +1,4 @@
-name: Testes Automatizados
+name: CI
 
 on:
   push:
@@ -24,6 +24,21 @@ jobs:
 
       - name: Rodar testes
         run: mvn test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
 
       - name: Build da aplicação
         run: mvn package -DskipTests
