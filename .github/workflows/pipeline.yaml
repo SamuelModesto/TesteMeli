@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Baixar código
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Configurar Java
         uses: actions/setup-java@v4
@@ -22,8 +24,20 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Rodar testes e gerar cobertura
-        run: mvn verify
+      - name: Cache SonarQube
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Rodar testes, gerar cobertura e analisar no SonarQube
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: >
+          mvn -B verify
+          org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+          -Dsonar.projectKey=SamuelModesto_TesteMeli
 
       - name: Publicar relatório dos testes
         if: always()

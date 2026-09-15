@@ -15,6 +15,7 @@
         <maven.compiler.release>21</maven.compiler.release>
         <org.mapstruct.version>1.6.2</org.mapstruct.version>
         <lombok.version>1.18.34</lombok.version>
+        <sonar.organization>samuelmodesto</sonar.organization>
     </properties>
 
     <parent>
