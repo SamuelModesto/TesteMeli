@@ -38,6 +38,7 @@ jobs:
           mvn -B verify
           org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
           -Dsonar.projectKey=SamuelModesto_TesteMeli
+          -Dsonar.qualitygate.wait=true
 
       - name: Publicar relatório dos testes
         if: always()
