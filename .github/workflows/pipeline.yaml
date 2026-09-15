@@ -35,7 +35,7 @@ jobs:
         run: mvn -B verify
 
       - name: Analisar no SonarQube
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/develop'
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: >
