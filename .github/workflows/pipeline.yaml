@@ -42,3 +42,9 @@ jobs:
 
       - name: Build da aplicação
         run: mvn package -DskipTests
+
+      - name: Publicar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aplicacao
+          path: target/*.jar
