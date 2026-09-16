@@ -8,7 +8,51 @@ on:
       - 'feature/**'
 
 jobs:
+
   test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Rodar testes e gerar cobertura
+        run: mvn -B verify
+
+      - name: Publicar relatório dos testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-testes
+          path: target/surefire-reports/
+
+      - name: Publicar relatório de cobertura
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-cobertura
+          path: target/site/jacoco/
+
+      - name: Publicar dados para análise
+        if: github.ref == 'refs/heads/develop'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dados-analise
+          path: target/
+
+
+  quality:
+    needs: test
+    if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
 
     steps:
@@ -31,11 +75,13 @@ jobs:
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
 
-      - name: Rodar testes e gerar cobertura
-        run: mvn -B verify
+      - name: Baixar dados da análise
+        uses: actions/download-artifact@v4
+        with:
+          name: dados-analise
+          path: target
 
       - name: Analisar no SonarQube
-        if: github.ref == 'refs/heads/develop'
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: >
@@ -44,22 +90,17 @@ jobs:
           -Dsonar.projectKey=SamuelModesto_TesteMeli
           -Dsonar.qualitygate.wait=true
 
-      - name: Publicar relatório dos testes
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: relatorio-testes
-          path: target/surefire-reports/
-
-      - name: Publicar relatório de cobertura
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: relatorio-cobertura
-          path: target/site/jacoco/
 
   build:
-    needs: test
+    needs:
+      - test
+      - quality
+
+    if: |
+      always() &&
+      needs.test.result == 'success' &&
+      (needs.quality.result == 'success' || needs.quality.result == 'skipped')
+
     runs-on: ubuntu-latest
 
     steps:
