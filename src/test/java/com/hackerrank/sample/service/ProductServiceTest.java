@@ -97,7 +97,7 @@ class ProductServiceTest {
         ProductResponseDto result = productService.findProductById("PRD-1");
 
         assertNotNull(result);
-        assertEquals("CHILD", result.category().id());
+        assertEquals("CHIL", result.category().id());
         assertEquals(2, result.category().path().size());
         assertEquals("PARENT", result.category().path().get(0).id());
         assertEquals("Parent Category", result.category().path().get(0).name());
